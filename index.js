@@ -7,12 +7,11 @@ const token = process.env.TELEGRAM_TOKEN,
     sequelize = require('./db/db'),
     User = require('./db/models');
 
-
 const start = async () => {
     try {
         // Подключение и синхронизация с БД
         await sequelize.authenticate()
-        await sequelize.sync({force: true})
+        await sequelize.sync()
 
         // Флаг процесса игры
         let gameOver = false,
@@ -24,13 +23,14 @@ const start = async () => {
 
         // Массив команд доступных пользователю
         bot.setMyCommands([
+            {command: '/start', description: 'Начать'},
             {command: '/info', description: 'Статистика пользователя'},
             {command: '/game', description: 'Сыграть в игру'},
         ])
 
         // Игровая логика
         const gameStart = async (chatID) => {
-            const user = await User.findOne({chatID})
+            const user = await User.findOne({where: {chatID: chatID}})
             user.totalGames += 1
             await user.save();
             // При запуске игры, процесс обнуляется
@@ -45,18 +45,18 @@ const start = async () => {
 
         // Основной цикл диалога
         bot.on('message', async msg => {
-            const chatID = msg.chat.id;
+            const chatID = msg.from.id;
+
+            const findUser = await User.findOne({where: {chatID: chatID}})
+            if (!findUser) await User.create({chatID})
+
             try {
                 switch (msg.text) {
                     case '/start':
-                        // Сохраняем пользователя в БД
-                        const findUser = await User.findOne({chatID})
-                        if(!findUser)  await User.create({chatID})
-
                         await bot.sendSticker(chatID, 'https://tlgrm.ru/_/stickers/ccd/a8d/ccda8d5d-d492-4393-8bb7-e33f77c24907/1.webp')
                         return await bot.sendMessage(chatID, `Welcome pussy boy`);
                     case '/info':
-                        const user = await User.findOne({chatID})
+                        const user = await User.findOne({where: {chatID: chatID}})
                         return await bot.sendMessage(chatID, `Пользователь: ${msg.from.first_name} ${msg.from.last_name}, Побед: ${user?.victory}, Поражений: ${user?.defeat}, Всего игр: ${user?.totalGames}, Всего попыток: ${user?.attempts}`);
                     case '/game':
                         return gameStart(chatID)
@@ -72,9 +72,9 @@ const start = async () => {
         // Слушаем ответ по нажатию на кнопку
         bot.on('callback_query', async msg => {
             const data = msg.data,
-                chatID = msg.message.chat.id;
+                chatID = msg.from.id;
             try {
-                const user = await User.findOne({chatID})
+                const user = await User.findOne({where: {chatID: chatID}})
                 // Если нажата кнопка статистики
                 if (data === '/info') {
                     return await bot.sendMessage(chatID, `Пользователь: ${msg.from.first_name} ${msg.from.last_name}, Побед: ${user?.victory}, Поражений: ${user?.defeat}, Всего игр: ${user?.totalGames}, Всего попыток: ${user?.attempts}`);
